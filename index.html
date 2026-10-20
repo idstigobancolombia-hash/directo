@@ -52,18 +52,19 @@ body.obs #gear{display:none}
 
 <button id="gear">⚙ PANEL</button>
 <div id="cfg">
-  <div class="top"><span>PANEL VERTICAL</span><span id="x">✕</span></div>
+  <div class="top"><span>PANEL VERTICAL<i id="ver" style="font:500 12px Consolas,monospace;color:#ffd166;margin-left:10px;font-style:normal"></i></span><span id="x">✕</span></div>
   <label>Video de YouTube o enlace .mp4 (uno solo)</label><input id="fVid" placeholder="ID, URL de YouTube o enlace .mp4">
   <small>Empieza vacío. Un enlace reproduce ese video en bucle, sin cambiar.</small>
+  <label>Volumen: <span id="fVolN">0</span>%</label><input type="range" id="fVol" min="0" max="100">
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fMute" style="width:auto"> Silenciar</label>
+  <small>Con sonido, un navegador normal puede pedir un clic en la página; OBS no. En OBS marca «Controlar audio mediante OBS» en la fuente para verlo en el mezclador.</small>
+  
   <label>Lista de videos locales (elige varios)</label><input type="file" id="fFile" accept="video/*" multiple>
   <small>Se reproducen en orden por nombre y, al terminar el último, vuelve el primero. Con un solo archivo se repite en bucle. Solo dura mientras la pestaña esté abierta.</small>
   <button id="bClr">Quitar videos</button>
   <label>Ajuste del video</label>
   <select id="fFit"><option value="cover">Llenar toda la pantalla (recorta los lados)</option><option value="fit">Mostrar completo (con barras)</option></select>
   <label>Fecha de lanzamiento</label><input id="fDate" type="datetime-local">
-  <label>Volumen</label><input type="range" id="fVol" min="0" max="100">
-  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fMute" style="width:auto"> Silenciar</label>
-  <small>Con sonido, un navegador normal puede pedir un clic en la página; OBS no. En OBS marca «Controlar audio mediante OBS» en la fuente para verlo en el mezclador.</small>
   <label>Cuenta regresiva</label>
   <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fCdOn" style="width:auto"> Mostrar</label>
   <label>Tamaño</label><input type="range" id="fCdK" min="40" max="130">
@@ -74,6 +75,7 @@ body.obs #gear{display:none}
 </div>
 
 <script>
+const VER="V-1.4 · 20 oct 2026";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
 const lines=t=>(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
@@ -140,14 +142,15 @@ function vidVol(){const v=$("bg").querySelector("video");if(v){v.volume=S.vol/10
 function ytVol(){
   const f=$("bg").querySelector("iframe");if(!f)return;
   const c=(fn,a)=>{try{f.contentWindow.postMessage(JSON.stringify({event:"command",func:fn,args:a||[]}),"*")}catch(e){}};
+  try{f.contentWindow.postMessage(JSON.stringify({event:"listening",id:1,channel:"widget"}),"*")}catch(e){}
   [0,1000,3000].forEach(ms=>setTimeout(()=>{c("setVolume",[S.vol]);c(S.mute?"mute":"unMute")},ms));
 }
 const applyVol=()=>{vidVol();ytVol()};
-$("fVol").oninput=()=>{S.vol=+$("fVol").value;S.mute=false;$("fMute").checked=false;persist();applyVol()};
+$("fVol").oninput=()=>{S.vol=+$("fVol").value;$("fVolN").textContent=S.vol;S.mute=false;$("fMute").checked=false;persist();applyVol()};
 $("fMute").onchange=()=>{S.mute=$("fMute").checked;persist();applyVol()};
 function applyCd(){const e=$("cd");e.style.display=S.cdOn?"":"none";e.style.top=S.cdY+"px";e.style.transformOrigin="50% 0";e.style.transform=`scale(${S.cdK})`}
 const _fill=fill;
-fill=function(){_fill();$("fVol").value=S.vol;$("fMute").checked=!!S.mute;$("fCdOn").checked=!!S.cdOn;$("fCdK").value=Math.round(S.cdK*100);$("fCdY").value=S.cdY;applyCd()};
+fill=function(){_fill();$("ver").textContent=VER;console.log("GTA6 overlay",VER);$("fVol").value=S.vol;$("fVolN").textContent=S.vol;$("fMute").checked=!!S.mute;$("fCdOn").checked=!!S.cdOn;$("fCdK").value=Math.round(S.cdK*100);$("fCdY").value=S.cdY;applyCd()};
 $("fCdOn").onchange=()=>{S.cdOn=$("fCdOn").checked;persist();applyCd()};
 $("fCdK").oninput=()=>{S.cdK=$("fCdK").value/100;persist();applyCd()};
 $("fCdY").oninput=()=>{S.cdY=+$("fCdY").value;persist();applyCd()};

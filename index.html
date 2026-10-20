@@ -16,7 +16,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 #bg iframe{position:absolute;border:0;pointer-events:none;left:50%;top:50%;transform:translate(-50%,-50%);width:3414px;height:1920px} /* 16:9 llenando el alto, recorta los lados */
 #bg.fit video{object-fit:contain}
 #bg.fit iframe{width:1080px;height:608px}                                                                                       /* 16:9 completo con barras */
-body.nobg,body.nobg #stage,html:has(body.nobg){background:transparent!important}
+body.obs.nobg,body.obs.nobg #stage,html:has(body.obs.nobg){background:transparent!important}
 /* Cuenta regresiva */
 #cd{position:absolute;left:60px;right:60px;top:90px;background:rgba(10,6,28,.72);backdrop-filter:blur(10px);border:3px solid var(--mg);border-radius:22px;box-shadow:0 0 28px rgba(255,43,214,.55),inset 0 0 30px rgba(0,240,255,.14);overflow:hidden;text-align:center}
 #cd .hd{font:700 32px var(--f);letter-spacing:4px;padding:16px;background:linear-gradient(90deg,rgba(0,240,255,.3),rgba(255,43,214,.3));text-shadow:0 0 10px var(--cy)}
@@ -53,9 +53,11 @@ body.obs #gear{display:none}
 <button id="gear">⚙ PANEL</button>
 <div id="cfg">
   <div class="top"><span>PANEL VERTICAL</span><span id="x">✕</span></div>
-  <label>Videos (uno por línea: ID, URL de YouTube o enlace .mp4)</label><textarea id="fVid"></textarea>
-  <small>Se aplican al instante. Si hay varios, rotan solos.</small>
-  <label>Cambiar de video cada (minutos, 0 = no rotar)</label><input id="fRot" type="number" min="0" step="1">
+  <label>Video de YouTube o enlace .mp4 (uno solo)</label><input id="fVid" placeholder="ID, URL de YouTube o enlace .mp4">
+  <small>Empieza vacío. Un enlace reproduce ese video en bucle, sin cambiar.</small>
+  <label>Lista de videos locales (elige varios)</label><input type="file" id="fFile" accept="video/*" multiple>
+  <small>Se reproducen en orden por nombre y, al terminar el último, vuelve el primero. Con un solo archivo se repite en bucle. Solo dura mientras la pestaña esté abierta.</small>
+  <button id="bClr">Quitar videos</button>
   <label>Ajuste del video</label>
   <select id="fFit"><option value="cover">Llenar toda la pantalla (recorta los lados)</option><option value="fit">Mostrar completo (con barras)</option></select>
   <label>Fecha de lanzamiento</label><input id="fDate" type="datetime-local">
@@ -66,23 +68,22 @@ body.obs #gear{display:none}
   <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fCdOn" style="width:auto"> Mostrar</label>
   <label>Tamaño</label><input type="range" id="fCdK" min="40" max="130">
   <label>Altura en pantalla</label><input type="range" id="fCdY" min="0" max="1700">
-  <label>O elegir un video de tu PC</label><input type="file" id="fFile" accept="video/*">
-  <button id="bClr">Quitar video local</button><button id="bExp">⬇ Exportar config-vertical.json</button>
+  <button id="bExp">⬇ Exportar config-vertical.json</button>
   <small id="vStat"></small>
-  <small>Para OBS: exporta el archivo, súbelo a GitHub junto a vertical.html y OBS lo carga solo. Con el campo de videos vacío el fondo queda transparente.</small>
+  <small>Para OBS: exporta el archivo, súbelo a GitHub junto a vertical.html y OBS lo carga solo. Sin video, dentro de OBS el fondo queda transparente: pon tu lista en una fuente de Medios de OBS debajo.</small>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
 const lines=t=>(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
-const DEF={videos:"QdBZY2fkU-0",rot:5,fit:"cover",vol:60,mute:true,cdOn:true,cdK:1,cdY:90,date:"2026-11-19T00:00"};
-let S={...DEF},LOCAL=null,vi=0,rt;
+const DEF={videos:"",fit:"cover",vol:60,mute:true,cdOn:true,cdK:1,cdY:90,date:"2026-11-19T00:00"};
+let S={...DEF},LOCALS=[],li=0;
 
 /* Carga: DEF < config-vertical.json < localStorage < parámetros URL */
 async function load(){
   try{const r=await fetch("config-vertical.json",{cache:"no-store"});if(r.ok)Object.assign(S,await r.json())}catch(e){}
-  try{Object.assign(S,JSON.parse(localStorage.getItem("gta6v")||"{}"))}catch(e){}
+  try{Object.assign(S,JSON.parse(localStorage.getItem("gta6v2")||"{}"))}catch(e){}
   const q=new URLSearchParams(location.search);if(q.get("video"))S.videos=q.get("video");
 }
 if(window.obsstudio||/[?&]panel=0/.test(location.search))document.body.classList.add("obs");
@@ -94,21 +95,23 @@ addEventListener("resize",fit);fit();
 /* Video: reproduce el actual de la lista (o el local) */
 function stat(t){$("vStat").textContent=t}
 function play(){
-  const L=lines(S.videos),v=LOCAL||L[vi%Math.max(L.length,1)]||"",bg=$("bg");
+  const bg=$("bg"),v=LOCALS.length?LOCALS[li%LOCALS.length]:(lines(S.videos)[0]||"");
   bg.className=S.fit==="fit"?"fit":"";
   document.body.classList.toggle("nobg",!v);
-  if(LOCAL||/\.(mp4|webm|ogg)(\?.*)?$/i.test(v)){bg.innerHTML=`<video src="${LOCAL||esc(v)}" autoplay loop playsinline></video>`;vidVol();stat(LOCAL?"▶ Video local (solo esta sesión)":"▶ Archivo de video");return}
-  if(!v){bg.innerHTML="";stat("Sin video: fondo transparente");return}
+  if(LOCALS.length||/\.(mp4|webm|ogg)(\?.*)?$/i.test(v)){
+    bg.innerHTML=`<video src="${LOCALS.length?v:esc(v)}" autoplay ${LOCALS.length>1?"":"loop"} playsinline></video>`;
+    const el=bg.querySelector("video");
+    if(LOCALS.length>1)el.onended=()=>{li=(li+1)%LOCALS.length;play()};   // lista local: pasa al siguiente al terminar
+    vidVol();stat(LOCALS.length?`▶ Lista local: video ${li%LOCALS.length+1} de ${LOCALS.length}`:"▶ Archivo de video");return;
+  }
+  if(!v){bg.innerHTML="";stat("Sin video. Pega un enlace o elige archivos de tu PC.");return}
   const m=v.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([\w-]{11})/)||v.match(/^([\w-]{11})$/);
   if(!m){bg.innerHTML="";stat("⚠ No reconozco ese enlace o ID");return}
   const id=m[1],t=(v.match(/[?&#]t=(\d+)/)||[])[1],http=/^https?:/.test(location.protocol);
   bg.innerHTML=`<iframe onload="ytVol()" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture" src="https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&playsinline=1&enablejsapi=1${t?"&start="+t:""}${http?"&origin="+encodeURIComponent(location.origin):""}"></iframe>`;
-  stat(http?`▶ YouTube: ${id} (${vi%Math.max(L.length,1)+1} de ${L.length||1})`:"⚠ Abriste el archivo con doble clic (file://): YouTube lo bloquea. Usa GitHub Pages o un servidor local.");
+  stat(http?"▶ YouTube: "+id+" (si sale pantalla negra, el dueño no permite incrustarlo)":"⚠ Abriste el archivo con doble clic (file://): YouTube lo bloquea. Usa GitHub Pages o un servidor local.");
 }
-function cycle(){
-  clearInterval(rt);vi=0;play();const L=lines(S.videos);
-  if(!LOCAL&&L.length>1&&S.rot>0)rt=setInterval(()=>{vi=(vi+1)%L.length;play()},S.rot*6e4);
-}
+function cycle(){li=0;play()}
 
 /* Cuenta regresiva */
 function tick(){
@@ -120,13 +123,13 @@ function tick(){
 setInterval(tick,1000);
 
 /* Panel: todo se aplica al instante */
-const persist=()=>{try{localStorage.setItem("gta6v",JSON.stringify(S))}catch(e){}};
-function fill(){$("fVid").value=S.videos;$("fRot").value=S.rot;$("fFit").value=S.fit;$("fDate").value=S.date}
+const persist=()=>{try{localStorage.setItem("gta6v2",JSON.stringify(S))}catch(e){}};
+function fill(){$("fVid").value=S.videos;$("fFit").value=S.fit;$("fDate").value=S.date}
 let vt;
-function readAll(){S.videos=$("fVid").value;S.rot=+$("fRot").value||0;S.fit=$("fFit").value;S.date=$("fDate").value||DEF.date;persist();cycle();tick()}
-["fVid","fRot","fFit","fDate"].forEach(i=>$(i).oninput=()=>{clearTimeout(vt);vt=setTimeout(()=>{LOCAL=null;readAll()},400)});
-$("fFile").onchange=e=>{const f=e.target.files[0];if(!f)return;if(LOCAL)URL.revokeObjectURL(LOCAL);LOCAL=URL.createObjectURL(f);cycle()};
-$("bClr").onclick=()=>{LOCAL=null;$("fFile").value="";cycle()};
+function readAll(){S.videos=$("fVid").value;S.fit=$("fFit").value;S.date=$("fDate").value||DEF.date;persist();cycle();tick()}
+["fVid","fFit","fDate"].forEach(i=>$(i).oninput=()=>{clearTimeout(vt);vt=setTimeout(()=>{if(i==="fVid"&&$("fVid").value.trim())LOCALS=[];readAll()},400)});
+$("fFile").onchange=e=>{const fs=[...e.target.files].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!fs.length)return;LOCALS.forEach(u=>URL.revokeObjectURL(u));LOCALS=fs.map(f=>URL.createObjectURL(f));cycle()};
+$("bClr").onclick=()=>{LOCALS=[];$("fFile").value="";$("fVid").value="";S.videos="";persist();cycle()};
 $("bExp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:"application/json"}));a.download="config-vertical.json";a.click()};
 $("gear").onclick=()=>$("cfg").classList.toggle("on");
 $("x").onclick=()=>$("cfg").classList.remove("on");
